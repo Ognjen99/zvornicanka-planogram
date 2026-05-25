@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+
+# Supabase CLI temp files
+supabase/.temp/
+
+# Generated while parsing PDF (data is in supabase migration)
+images/podgrupe_extracted.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

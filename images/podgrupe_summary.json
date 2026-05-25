@@ -1,0 +1,104 @@
+{
+  "total": 3124,
+  "roots": 9,
+  "level3_groups": 44,
+  "sample_roots": [
+    {
+      "code": "0",
+      "name": "NERASPOREĐENO",
+      "parent_code": null
+    },
+    {
+      "code": "1",
+      "name": "PREHRANA",
+      "parent_code": null
+    },
+    {
+      "code": "2",
+      "name": "HEMIJA",
+      "parent_code": null
+    },
+    {
+      "code": "3",
+      "name": "NEPREHRANA",
+      "parent_code": null
+    },
+    {
+      "code": "4",
+      "name": "DRUŠTVENO ODGOVORNI AKCIJA",
+      "parent_code": null
+    },
+    {
+      "code": "6",
+      "name": "TEHNIČKI UREĐAJI I OPREMA",
+      "parent_code": null
+    },
+    {
+      "code": "7",
+      "name": "SEZONSKI PROGRAM,AUTO,BICIKL,.......",
+      "parent_code": null
+    },
+    {
+      "code": "8",
+      "name": "IGRAČKE I BEBI PROGRAM",
+      "parent_code": null
+    },
+    {
+      "code": "9",
+      "name": "ALAT,INSTALACIONA I ZAŠTITNA OPREMA",
+      "parent_code": null
+    }
+  ],
+  "sample_l3": [
+    {
+      "code": "000",
+      "name": "NERASPOREĐENO",
+      "parent_code": "0"
+    },
+    {
+      "code": "101",
+      "name": "MESNE PRERAĐEVINE",
+      "parent_code": "1"
+    },
+    {
+      "code": "102",
+      "name": "SVJEŽE MESO",
+      "parent_code": "1"
+    },
+    {
+      "code": "103",
+      "name": "MLJEKO I MLIJEČNI PROIZVODI",
+      "parent_code": "1"
+    },
+    {
+      "code": "104",
+      "name": "ZAMRZNUTI PROIZVODI",
+      "parent_code": "1"
+    },
+    {
+      "code": "105",
+      "name": "OSNOVNE ŽIVOTNE NAMIRNICE",
+      "parent_code": "1"
+    },
+    {
+      "code": "106",
+      "name": "GASTRO I PEKARSTVO",
+      "parent_code": "1"
+    },
+    {
+      "code": "107",
+      "name": "PEKARSKI PROGRAM I TESTENINE",
+      "parent_code": "1"
+    },
+    {
+      "code": "108",
+      "name": "KOLAČI I TORTE",
+      "parent_code": "1"
+    },
+    {
+      "code": "109",
+      "name": "PRAŠKASTI PROGRAM",
+      "parent_code": "1"
+    }
+  ]
+}
