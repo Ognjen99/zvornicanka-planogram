@@ -364,6 +364,30 @@ body {
   border-radius: 0.75rem;
   border: 1px solid var(--brand-border);
   background: var(--brand-surface);
+  display: block;
+}
+
+.svg-canvas-wrap {
+  overflow: auto;
+  max-width: 100%;
+  border-radius: 0.75rem;
+}
+
+.planogram-zoom-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.planogram-zoom-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 180px;
+}
+
+.planogram-zoom-slider input[type='range'] {
+  width: 110px;
+  accent-color: var(--brand-primary);
 }
 
 .article-palette,

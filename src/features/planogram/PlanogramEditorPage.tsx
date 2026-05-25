@@ -56,7 +56,10 @@ type LoadedPlanogram = {
   placements: Placement[];
 };
 
-const PX_PER_MM = 0.6;
+const BASE_PX_PER_MM = 0.6;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.25;
 const MARGIN_MM = 5;
 const ARTICLE_BUCKET = 'article-images';
 const ARTICLE_SELECT = 'id,name,width_mm,height_mm,depth_mm,image_path,group_name,subgroup_name';
@@ -105,6 +108,7 @@ export function PlanogramEditorPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const [articleFilter, setArticleFilter] = useState('');
   const [debouncedArticleFilter, setDebouncedArticleFilter] = useState('');
   const [paletteArticles, setPaletteArticles] = useState<ArticleRow[]>([]);
@@ -605,19 +609,46 @@ export function PlanogramEditorPage() {
 
   const bayCount = bayWidthsMm.length;
   const shelfWidthMm = totalShelfWidthMm(bayWidthsMm);
+  const pxPerMm = BASE_PX_PER_MM * zoomLevel;
+
   const bayEdgesPx = useMemo(
-    () => bayEdgePositionsMm(bayWidthsMm).map((mm) => mm * PX_PER_MM),
-    [bayWidthsMm],
+    () => bayEdgePositionsMm(bayWidthsMm).map((mm) => mm * pxPerMm),
+    [bayWidthsMm, pxPerMm],
   );
 
   const shelfDepthMm = currentShelf?.shelf_depth_mm ?? 400;
   const shelfCount = currentShelf?.shelf_count ?? 1;
   const shelfHeightLimitMm = currentShelf?.shelf_height_mm ?? null;
 
-  const shelfWidthPx = shelfWidthMm * PX_PER_MM;
+  const shelfWidthPx = shelfWidthMm * pxPerMm;
   const shelfHeightPx = 12;
   const shelfSpacingPx = 80;
   const bayHeightPx = 60 + shelfCount * shelfSpacingPx;
+  const svgWidthPx = shelfWidthPx + 2 * SVG_MARGIN_PX + SHELF_ROW_LABEL_GUTTER_PX;
+  const svgHeightPx = bayHeightPx + 2 * SVG_MARGIN_PX;
+
+  const getSvgPoint = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    return point.matrixTransform(matrix.inverse());
+  };
+
+  const getShelfContentX = (clientX: number, clientY: number) => {
+    const svgPoint = getSvgPoint(clientX, clientY);
+    if (!svgPoint) return 0;
+    return svgPoint.x - SVG_MARGIN_PX - SHELF_ROW_LABEL_GUTTER_PX;
+  };
+
+  const getShelfContentY = (clientX: number, clientY: number) => {
+    const svgPoint = getSvgPoint(clientX, clientY);
+    if (!svgPoint) return 0;
+    return svgPoint.y - SVG_MARGIN_PX;
+  };
 
   useEffect(() => {
     if (!loadedPlanogram || !currentShelf || shelfHeightLimitMm == null) {
@@ -744,20 +775,17 @@ export function PlanogramEditorPage() {
     navigate(`/print?planogramId=${loadedPlanogram.row.id}`);
   };
 
-  const getPointerMm = (clientX: number): number => {
-    if (!svgRef.current) return 0;
-    const rect = svgRef.current.getBoundingClientRect();
-    const shelfContentLeftPx = SVG_MARGIN_PX + SHELF_ROW_LABEL_GUTTER_PX;
-    const localX = clientX - rect.left - shelfContentLeftPx;
+  const getPointerMm = (clientX: number, clientY: number) => {
+    const localX = getShelfContentX(clientX, clientY);
     const clampedPx = Math.max(0, Math.min(localX, shelfWidthPx));
-    return clampedPx / PX_PER_MM;
+    return clampedPx / pxPerMm;
   };
 
   const handlePlacementMouseDown = (event: MouseEvent<SVGGElement>, placement: Placement) => {
     event.preventDefault();
     const { starts } = bayLayoutRef.current;
     const bayStart = starts[placement.bayIndex] ?? 0;
-    const pointerMm = getPointerMm(event.clientX);
+    const pointerMm = getPointerMm(event.clientX, event.clientY);
     const localPointer = pointerMm - bayStart;
     setDraggingId(placement.id);
     setDragOffsetMm(placement.xMm - localPointer);
@@ -765,7 +793,7 @@ export function PlanogramEditorPage() {
 
   const handleSvgMouseMove = (event: MouseEvent<SVGSVGElement>) => {
     if (!draggingId || !loadedPlanogram || !currentShelf) return;
-    const pointerMm = getPointerMm(event.clientX);
+    const pointerMm = getPointerMm(event.clientX, event.clientY);
     setLoadedPlanogram((prev) => {
       if (!prev) return prev;
       const placements = prev.placements;
@@ -868,10 +896,8 @@ export function PlanogramEditorPage() {
       return;
     }
 
-    const rect = svg.getBoundingClientRect();
-    const shelfContentLeftPx = SVG_MARGIN_PX + SHELF_ROW_LABEL_GUTTER_PX;
-    const localX = event.clientX - rect.left - shelfContentLeftPx;
-    const localY = event.clientY - rect.top - SVG_MARGIN_PX;
+    const localX = getShelfContentX(event.clientX, event.clientY);
+    const localY = getShelfContentY(event.clientX, event.clientY);
 
     const clampedPxX = Math.max(0, Math.min(localX, shelfWidthPx));
     const shelfIndexFromY = Math.floor(
@@ -882,7 +908,7 @@ export function PlanogramEditorPage() {
 
     const widths = bayLayoutRef.current.widths;
     const starts = bayLayoutRef.current.starts;
-    const absMm = clampedPxX / PX_PER_MM;
+    const absMm = clampedPxX / pxPerMm;
     let targetBay = bayIndexAtAbsoluteMm(absMm, widths);
     targetBay = Math.max(0, Math.min(bayCount - 1, targetBay));
     const bayW = widths[targetBay];
@@ -1031,7 +1057,7 @@ export function PlanogramEditorPage() {
               </div>
             )}
             <div className="metric">
-              Skala na ekranu: <strong>{PX_PER_MM.toFixed(2)}</strong> px/mm
+              Skala na ekranu: <strong>{pxPerMm.toFixed(2)}</strong> px/mm
             </div>
           </div>
           <div className="stack-h">
@@ -1208,14 +1234,50 @@ export function PlanogramEditorPage() {
               Prikazani su svi redovi za izabrani šablon. Prevucite artikl sa palete na željenu policu ili dodajte pomoću dugmeta +.
             </div>
           </div>
+          <div className="planogram-zoom-controls stack-h">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setZoomLevel((prev) => Math.max(ZOOM_MIN, prev - ZOOM_STEP))}
+              disabled={zoomLevel <= ZOOM_MIN}
+              aria-label="Umanji prikaz"
+            >
+              −
+            </button>
+            <label className="planogram-zoom-slider">
+              <span className="muted">Zoom</span>
+              <input
+                type="range"
+                min={ZOOM_MIN}
+                max={ZOOM_MAX}
+                step={ZOOM_STEP}
+                value={zoomLevel}
+                onChange={(event) => setZoomLevel(Number(event.target.value))}
+              />
+              <span className="metric">{Math.round(zoomLevel * 100)}%</span>
+            </label>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setZoomLevel((prev) => Math.min(ZOOM_MAX, prev + ZOOM_STEP))}
+              disabled={zoomLevel >= ZOOM_MAX}
+              aria-label="Uvećaj prikaz"
+            >
+              +
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setZoomLevel(1)}>
+              Reset
+            </button>
+          </div>
         </div>
 
+        <div className="svg-canvas-wrap">
         <svg
           ref={svgRef}
           className="svg-canvas"
-          width={shelfWidthPx + 2 * SVG_MARGIN_PX + SHELF_ROW_LABEL_GUTTER_PX}
-          height={bayHeightPx + 2 * SVG_MARGIN_PX}
-          viewBox={`0 0 ${shelfWidthPx + 2 * SVG_MARGIN_PX + SHELF_ROW_LABEL_GUTTER_PX} ${bayHeightPx + 2 * SVG_MARGIN_PX}`}
+          width={svgWidthPx}
+          height={svgHeightPx}
+          viewBox={`0 0 ${svgWidthPx} ${svgHeightPx}`}
           onMouseMove={handleSvgMouseMove}
           onMouseUp={handleSvgMouseUp}
           onMouseLeave={handleSvgMouseUp}
@@ -1315,13 +1377,13 @@ export function PlanogramEditorPage() {
                 const heightMm = article.height_mm;
                 const bayStartMm = bayStartsMm[placement.bayIndex ?? 0] ?? 0;
                 const bayLimitMm = bayWidthsMm[placement.bayIndex ?? 0] ?? 1000;
-                const rawX = (placement.xMm + bayStartMm) * PX_PER_MM;
-                const rawWidth = widthMm * PX_PER_MM;
+                const rawX = (placement.xMm + bayStartMm) * pxPerMm;
+                const rawWidth = widthMm * pxPerMm;
                 // Apply a small pixel-only shrink so products don't look glued together visually.
                 const visualGap = VISUAL_GAP_PX;
                 const widthPx = Math.max(1, rawWidth - visualGap);
                 const xPx = rawX + visualGap / 2;
-                const heightPx = heightMm * PX_PER_MM;
+                const heightPx = heightMm * pxPerMm;
                 const yPx = baseY - heightPx;
 
                 const rightEdge = placement.xMm + widthMm;
@@ -1420,7 +1482,7 @@ export function PlanogramEditorPage() {
             {bayCount > 1 ? (
               <>
                 {bayWidthsMm.map((bayWidth, index) => {
-                  const centerPx = (bayStartsMm[index] + bayWidth / 2) * PX_PER_MM;
+                  const centerPx = (bayStartsMm[index] + bayWidth / 2) * pxPerMm;
                   return (
                     <text
                       key={`bay-width-label-${index}`}
@@ -1453,6 +1515,7 @@ export function PlanogramEditorPage() {
             </g>
           </g>
         </svg>
+        </div>
 
         {bayShelfSummaries.length > 0 && (
           <div className="planogram-summary">
