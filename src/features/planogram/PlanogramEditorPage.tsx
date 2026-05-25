@@ -1414,34 +1414,40 @@ export function PlanogramEditorPage() {
                 );
               })}
 
-            <text x={4} y={12} fontSize={9} fill="#475569">
+            <text x={4} y={10} fontSize={9} fill="#475569">
               0 mm
             </text>
             {bayCount > 1 ? (
-              bayWidthsMm.map((bayWidth, index) => {
-                const centerPx = (bayStartsMm[index] + bayWidth / 2) * PX_PER_MM;
-                return (
-                  <text
-                    key={`bay-width-label-${index}`}
-                    x={centerPx}
-                    y={12}
-                    fontSize={9}
-                    fontWeight={600}
-                    textAnchor="middle"
-                    fill="#1e293b"
-                  >
-                    Raf {index + 1}: {bayWidth} mm
-                  </text>
-                );
-              })
+              <>
+                {bayWidthsMm.map((bayWidth, index) => {
+                  const centerPx = (bayStartsMm[index] + bayWidth / 2) * PX_PER_MM;
+                  return (
+                    <text
+                      key={`bay-width-label-${index}`}
+                      x={centerPx}
+                      y={10}
+                      fontSize={9}
+                      fontWeight={600}
+                      textAnchor="middle"
+                      fill="#1e293b"
+                    >
+                      Raf {index + 1}: {bayWidth} mm
+                    </text>
+                  );
+                })}
+                <text
+                  x={shelfWidthPx / 2}
+                  y={24}
+                  fontSize={9}
+                  textAnchor="middle"
+                  fill="#475569"
+                >
+                  Ukupno {shelfWidthMm} mm
+                </text>
+              </>
             ) : (
-              <text x={shelfWidthPx / 2} y={12} fontSize={9} fontWeight={600} textAnchor="middle" fill="#1e293b">
+              <text x={shelfWidthPx / 2} y={10} fontSize={9} fontWeight={600} textAnchor="middle" fill="#1e293b">
                 Širina {shelfWidthMm} mm
-              </text>
-            )}
-            {bayCount > 1 && (
-              <text x={shelfWidthPx - 4} y={12} fontSize={9} textAnchor="end" fill="#475569">
-                Ukupno {shelfWidthMm} mm
               </text>
             )}
             </g>
