@@ -9,6 +9,7 @@ import {
   totalShelfWidthMm,
 } from '../../lib/bayWidths';
 import { supabase } from '../../lib/supabaseClient';
+import { formatArticleDimensionsCompact } from '../../lib/formatArticleDimensions';
 import { useArticleTaxonomy } from '../articles/useArticleTaxonomy';
 
 type ArticleRow = {
@@ -1005,9 +1006,22 @@ export function PlanogramEditorPage() {
 
         <div className="stack-h-between">
           <div className="metric-row">
-            <div className="metric">
-              Širina: <strong>{shelfWidthMm}</strong> mm
-            </div>
+            {bayCount > 1 ? (
+              <>
+                <div className="metric">
+                  Ukupna širina: <strong>{shelfWidthMm}</strong> mm
+                </div>
+                {bayWidthsMm.map((bayWidth, index) => (
+                  <div className="metric" key={`bay-width-metric-${index}`}>
+                    Raf {index + 1}: <strong>{bayWidth}</strong> mm
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div className="metric">
+                Širina: <strong>{shelfWidthMm}</strong> mm
+              </div>
+            )}
             <div className="metric">
               Dubina: <strong>{shelfDepthMm}</strong> mm
             </div>
@@ -1153,10 +1167,7 @@ export function PlanogramEditorPage() {
                         <div className="article-card-body">
                           <div className="article-card-name">{article.name}</div>
                           <div className="article-card-meta">
-                            <span>
-                              {article.width_mm}×{article.height_mm}
-                              {article.depth_mm != null && <>×{article.depth_mm}</>} mm
-                            </span>
+                            <span>{formatArticleDimensionsCompact(article)}</span>
                           </div>
                           {(article.group_name || article.subgroup_name) && (
                             <div className="article-card-tags">
@@ -1348,8 +1359,7 @@ export function PlanogramEditorPage() {
                     )}
                     {showDimensions && (
                       <text x={xPx + 4} y={yPx + 12} fontSize={8} fill="#ffffff">
-                        {article.width_mm}×{article.height_mm}
-                        {article.depth_mm != null && <>×{article.depth_mm}</>}mm
+                        {formatArticleDimensionsCompact(article)}
                       </text>
                     )}
                     <rect
@@ -1407,9 +1417,33 @@ export function PlanogramEditorPage() {
             <text x={4} y={12} fontSize={9} fill="#475569">
               0 mm
             </text>
-            <text x={shelfWidthPx - 40} y={12} fontSize={9} fill="#475569">
-              {shelfWidthMm} mm
-            </text>
+            {bayCount > 1 ? (
+              bayWidthsMm.map((bayWidth, index) => {
+                const centerPx = (bayStartsMm[index] + bayWidth / 2) * PX_PER_MM;
+                return (
+                  <text
+                    key={`bay-width-label-${index}`}
+                    x={centerPx}
+                    y={12}
+                    fontSize={9}
+                    fontWeight={600}
+                    textAnchor="middle"
+                    fill="#1e293b"
+                  >
+                    Raf {index + 1}: {bayWidth} mm
+                  </text>
+                );
+              })
+            ) : (
+              <text x={shelfWidthPx / 2} y={12} fontSize={9} fontWeight={600} textAnchor="middle" fill="#1e293b">
+                Širina {shelfWidthMm} mm
+              </text>
+            )}
+            {bayCount > 1 && (
+              <text x={shelfWidthPx - 4} y={12} fontSize={9} textAnchor="end" fill="#475569">
+                Ukupno {shelfWidthMm} mm
+              </text>
+            )}
             </g>
           </g>
         </svg>

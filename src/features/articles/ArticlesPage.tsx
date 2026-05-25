@@ -1,6 +1,7 @@
 import type { FormEvent, ChangeEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { formatArticleDimensions } from '../../lib/formatArticleDimensions';
 import { useArticleTaxonomy } from './useArticleTaxonomy';
 
 type ArticleRow = {
@@ -686,16 +687,7 @@ export function ArticlesPage() {
                         )}
                         <div className="stack-v">
                           <div>{article.name}</div>
-                          <div className="metric">
-                            <strong>{article.width_mm}</strong> × <strong>{article.height_mm}</strong>
-                            {article.depth_mm != null && (
-                              <>
-                                {' '}
-                                × <strong>{article.depth_mm}</strong>
-                              </>
-                            )}{' '}
-                            mm
-                          </div>
+                          <div className="metric">{formatArticleDimensions(article)}</div>
                           {(article.group_name || article.subgroup_name) && (
                             <div className="metric">
                               {article.group_name && <strong>{article.group_name}</strong>}
