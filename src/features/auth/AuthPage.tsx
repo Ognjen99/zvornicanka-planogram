@@ -9,6 +9,7 @@ export function AuthPage() {
   const [mode, setMode] = useState<Mode>('sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -79,15 +80,26 @@ export function AuthPage() {
             </label>
             <label className="form-row">
               <span className="muted">Lozinka</span>
-              <input
-                className="input"
-                type="password"
-                required
-                autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
-                placeholder="••••••••"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
+              <div className="password-input-wrap">
+                <input
+                  className="input password-input"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Sakrij lozinku' : 'Prikaži lozinku'}
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? 'Sakrij' : 'Prikaži'}
+                </button>
+              </div>
             </label>
           </div>
 
