@@ -449,7 +449,7 @@ export function PrintViewPage() {
                         y={yPx}
                         width={widthPx}
                         height={heightPx}
-                        preserveAspectRatio="xMidYMid slice"
+                        preserveAspectRatio="xMidYMax meet"
                       />
                     )}
                   </g>
