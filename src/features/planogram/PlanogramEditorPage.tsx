@@ -120,6 +120,8 @@ export function PlanogramEditorPage() {
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOffsetMm, setDragOffsetMm] = useState(0);
+  // Natural height/width ratio of each article image, keyed by article id.
+  const [imageAspect, setImageAspect] = useState<Record<string, number>>({});
   const [articleGroupFilter, setArticleGroupFilter] = useState('');
   const [articleSubgroupFilter, setArticleSubgroupFilter] = useState('');
   const [heightWarning, setHeightWarning] = useState<string | null>(null);
@@ -295,6 +297,27 @@ export function PlanogramEditorPage() {
     }
     return map;
   }, [articles]);
+
+  useEffect(() => {
+    let cancelled = false;
+    for (const article of articles) {
+      if (!article.imageUrl) continue;
+      if (imageAspect[article.id] != null) continue;
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled || !img.naturalWidth) return;
+        setImageAspect((prev) =>
+          prev[article.id] != null
+            ? prev
+            : { ...prev, [article.id]: img.naturalHeight / img.naturalWidth },
+        );
+      };
+      img.src = article.imageUrl;
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [articles, imageAspect]);
 
   const hasPaletteNarrowing = useMemo(() => {
     const q = debouncedArticleFilter.trim();
@@ -1463,15 +1486,19 @@ export function PlanogramEditorPage() {
                     {article.imageUrl &&
                       Array.from({ length: placement.facings }, (_, faceIndex) => {
                         const tileWidth = widthPx / placement.facings;
+                        const aspect = imageAspect[article.id];
+                        // Fill the cell width; derive height from the image's real
+                        // proportions so the whole article shows (extends upward if needed).
+                        const tileHeight = aspect != null ? tileWidth * aspect : heightPx;
                         return (
                           <image
                             key={`${placement.id}-face-${faceIndex}`}
                             href={article.imageUrl}
                             x={xPx + faceIndex * tileWidth}
-                            y={yPx}
+                            y={baseY - tileHeight}
                             width={tileWidth}
-                            height={heightPx}
-                            preserveAspectRatio="xMidYMax slice"
+                            height={tileHeight}
+                            preserveAspectRatio="none"
                           />
                         );
                       })}

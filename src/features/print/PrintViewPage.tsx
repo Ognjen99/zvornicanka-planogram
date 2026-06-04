@@ -83,6 +83,7 @@ export function PrintViewPage() {
   const [shelf, setShelf] = useState<ShelfRow | null>(null);
   const [placements, setPlacements] = useState<Placement[]>([]);
   const [articles, setArticles] = useState<ArticleRow[]>([]);
+  const [imageAspect, setImageAspect] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -159,6 +160,27 @@ export function PrintViewPage() {
     }
     return map;
   }, [articles]);
+
+  useEffect(() => {
+    let cancelled = false;
+    for (const article of articles) {
+      if (!article.imageUrl) continue;
+      if (imageAspect[article.id] != null) continue;
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled || !img.naturalWidth) return;
+        setImageAspect((prev) =>
+          prev[article.id] != null
+            ? prev
+            : { ...prev, [article.id]: img.naturalHeight / img.naturalWidth },
+        );
+      };
+      img.src = article.imageUrl;
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [articles, imageAspect]);
 
   const bayWidthsMm = useMemo(() => {
     if (!shelf) return [1000];
@@ -422,15 +444,17 @@ export function PrintViewPage() {
                     {article.imageUrl &&
                       Array.from({ length: placement.facings }, (_, faceIndex) => {
                         const tileWidth = widthPx / placement.facings;
+                        const aspect = imageAspect[article.id];
+                        const tileHeight = aspect != null ? tileWidth * aspect : heightPx;
                         return (
                           <image
                             key={`${placement.id}-face-${faceIndex}`}
                             href={article.imageUrl}
                             x={xPx + faceIndex * tileWidth}
-                            y={yPx}
+                            y={baseY - tileHeight}
                             width={tileWidth}
-                            height={heightPx}
-                            preserveAspectRatio="xMidYMax slice"
+                            height={tileHeight}
+                            preserveAspectRatio="none"
                           />
                         );
                       })}
