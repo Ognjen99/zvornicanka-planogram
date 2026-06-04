@@ -2,6 +2,7 @@ import type { FormEvent, ChangeEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { formatArticleDimensions } from '../../lib/formatArticleDimensions';
+import { removeImageBackground } from '../../lib/removeImageBackground';
 import { useArticleTaxonomy } from './useArticleTaxonomy';
 
 type ArticleRow = {
@@ -70,6 +71,7 @@ export function ArticlesPage() {
   const [heightMm, setHeightMm] = useState('');
   const [depthMm, setDepthMm] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [removeWhiteBg, setRemoveWhiteBg] = useState(true);
   const [saving, setSaving] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [subgroupName, setSubgroupName] = useState('');
@@ -233,14 +235,29 @@ export function ArticlesPage() {
       let imagePath: string | null = null;
 
       if (file) {
-        const ext = file.name.includes('.') ? file.name.split('.').pop() ?? 'png' : 'png';
+        let uploadBody: Blob = file;
+        let ext = file.name.includes('.') ? file.name.split('.').pop() ?? 'png' : 'png';
+        let contentType = file.type || `image/${ext}`;
+
+        if (removeWhiteBg) {
+          try {
+            uploadBody = await removeImageBackground(file);
+            // Background removal always outputs a transparent PNG.
+            ext = 'png';
+            contentType = 'image/png';
+          } catch {
+            uploadBody = file;
+          }
+        }
+
         const base = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`;
-        const safeName = file.name.replace(/\s+/g, '-').toLowerCase();
+        const baseName = file.name.replace(/\.[^.]+$/, '').replace(/\s+/g, '-').toLowerCase() || 'slika';
+        const safeName = `${baseName}.${ext}`;
         imagePath = `${user.id}/${base}-${safeName}`;
 
-        const { error: uploadError } = await supabase.storage.from(ARTICLE_BUCKET).upload(imagePath, file, {
+        const { error: uploadError } = await supabase.storage.from(ARTICLE_BUCKET).upload(imagePath, uploadBody, {
           upsert: true,
-          contentType: file.type || `image/${ext}`,
+          contentType,
         });
 
         if (uploadError) {
@@ -486,6 +503,14 @@ export function ArticlesPage() {
             <label className="form-row">
               <span className="muted">Slika (opciono)</span>
               <input className="input" type="file" accept="image/*" onChange={handleFileChange} />
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={removeWhiteBg}
+                  onChange={(event) => setRemoveWhiteBg(event.target.checked)}
+                />
+                <span className="muted">Ukloni belu pozadinu sa slike</span>
+              </label>
             </label>
             <label className="form-row">
               <span className="muted">Grupa</span>

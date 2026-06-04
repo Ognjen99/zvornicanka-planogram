@@ -594,6 +594,72 @@ export function PlanogramEditorPage() {
     setError(null);
   };
 
+  const handleAutoArrange = () => {
+    if (!loadedPlanogram || !currentShelf) return;
+    if (loadedPlanogram.placements.length === 0) return;
+
+    const bayWidths = getBayWidthsMm(currentShelf);
+
+    setLoadedPlanogram((prev) => {
+      if (!prev) return prev;
+
+      // Group placements per bay + shelf row.
+      const groups = new Map<string, Placement[]>();
+      for (const placement of prev.placements) {
+        const key = `${placement.bayIndex}-${placement.shelfIndex}`;
+        const arr = groups.get(key);
+        if (arr) {
+          arr.push(placement);
+        } else {
+          groups.set(key, [placement]);
+        }
+      }
+
+      const repositioned = new Map<string, number>();
+
+      for (const arr of groups.values()) {
+        const items = arr
+          .map((placement) => {
+            const article = articlesById.get(placement.articleId);
+            const width = article ? article.width_mm * placement.facings : 0;
+            return { placement, width };
+          })
+          .sort((a, b) => a.placement.xMm - b.placement.xMm);
+
+        const bayW = bayWidths[items[0]?.placement.bayIndex ?? 0] ?? currentShelf.bay_width_mm;
+        const totalWidth = items.reduce((sum, item) => sum + item.width, 0);
+        const leftover = bayW - totalWidth;
+
+        if (leftover >= 0 && items.length > 0) {
+          // Distribute the free space evenly between and around the items.
+          const gap = leftover / (items.length + 1);
+          let cursor = gap;
+          for (const item of items) {
+            repositioned.set(item.placement.id, Math.max(0, Math.round(cursor)));
+            cursor += item.width + gap;
+          }
+        } else {
+          // Not enough room: pack tightly from the left.
+          let cursor = 0;
+          for (const item of items) {
+            repositioned.set(item.placement.id, Math.round(cursor));
+            cursor += item.width + MIN_GAP_MM;
+          }
+        }
+      }
+
+      return {
+        ...prev,
+        placements: prev.placements.map((placement) =>
+          repositioned.has(placement.id)
+            ? { ...placement, xMm: repositioned.get(placement.id) as number }
+            : placement,
+        ),
+      };
+    });
+    setError(null);
+  };
+
   const bayWidthsMm = useMemo(() => {
     if (!currentShelf) return [1000];
     return getBayWidthsMm(currentShelf);
@@ -744,7 +810,7 @@ export function PlanogramEditorPage() {
     }
 
     const result = Array.from(groupMap.values())
-      .sort((a, b) => a.shelfIndex - b.shelfIndex || a.bayIndex - b.bayIndex)
+      .sort((a, b) => a.bayIndex - b.bayIndex || a.shelfIndex - b.shelfIndex)
       .map((group) => {
         const items = Array.from(group.articles.values()).map((item) => {
           let rowsDeep: number | null = null;
@@ -1079,6 +1145,14 @@ export function PlanogramEditorPage() {
               onClick={handleClearAllPlacements}
             >
               Obriši sve iz 2D police
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={!loadedPlanogram || loadedPlanogram.placements.length === 0}
+              onClick={handleAutoArrange}
+            >
+              Poravnaj artikle
             </button>
             <button type="button" className="btn" disabled={!loadedPlanogram || saving} onClick={handleSavePlanogram}>
               {saving ? 'Čuvanje…' : 'Sačuvaj raspored'}

@@ -248,7 +248,7 @@ export function PrintViewPage() {
     }
 
     const result = Array.from(groupMap.values())
-      .sort((a, b) => a.shelfIndex - b.shelfIndex || a.bayIndex - b.bayIndex)
+      .sort((a, b) => a.bayIndex - b.bayIndex || a.shelfIndex - b.shelfIndex)
       .map((group) => {
         const items = Array.from(group.articles.values()).map((item) => {
           let rowsDeep: number | null = null;
@@ -322,6 +322,7 @@ export function PrintViewPage() {
             </div>
           </div>
 
+          <div className="print-area">
           <svg
             className="svg-canvas"
             width={svgOuterWidthPx}
@@ -496,6 +497,7 @@ export function PrintViewPage() {
               ))}
             </div>
           )}
+          </div>
         </>
       )}
     </div>
