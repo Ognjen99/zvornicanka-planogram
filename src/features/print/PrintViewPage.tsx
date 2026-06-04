@@ -360,29 +360,6 @@ export function PrintViewPage() {
                 );
               })}
               <g transform={`translate(${shelfLabelGutterPx} 0)`}>
-              {/* Vertical bay bars including outer uprights */}
-              {bayEdgesPx.map((x, index) => {
-                const topOverhangPx = 20 * scale;
-                const bottomOverhangPx = 8 * scale;
-                const topY =
-                  bayHeightPx - shelfHeightPx - (shelfCount - 1) * shelfSpacingPx - topOverhangPx;
-                const height =
-                  shelfHeightPx + (shelfCount - 1) * shelfSpacingPx + topOverhangPx + bottomOverhangPx;
-                return (
-                  <rect
-                    key={`bay-bar-print-${index}-${x}`}
-                    x={x - 4 * scale}
-                    y={topY}
-                    width={8 * scale}
-                    height={height}
-                    fill="#64748b"
-                    stroke="#334155"
-                    strokeWidth={1.25 * scale}
-                    opacity={1}
-                  />
-                );
-              })}
-
               {Array.from({ length: shelfCount }, (_, index) => {
                 const y = bayHeightPx - shelfHeightPx - index * shelfSpacingPx;
                 return (
@@ -453,6 +430,30 @@ export function PrintViewPage() {
                       />
                     )}
                   </g>
+                );
+              })}
+
+              {/* Vertical bay bars (uprights) drawn on top so articles stay contained between them */}
+              {bayEdgesPx.map((x, index) => {
+                const topOverhangPx = 20 * scale;
+                const bottomOverhangPx = 8 * scale;
+                const topY =
+                  bayHeightPx - shelfHeightPx - (shelfCount - 1) * shelfSpacingPx - topOverhangPx;
+                const height =
+                  shelfHeightPx + (shelfCount - 1) * shelfSpacingPx + topOverhangPx + bottomOverhangPx;
+                return (
+                  <rect
+                    key={`bay-bar-print-${index}-${x}`}
+                    x={x - 4 * scale}
+                    y={topY}
+                    width={8 * scale}
+                    height={height}
+                    fill="#64748b"
+                    stroke="#334155"
+                    strokeWidth={1.25 * scale}
+                    opacity={1}
+                    pointerEvents="none"
+                  />
                 );
               })}
 

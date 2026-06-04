@@ -1389,29 +1389,6 @@ export function PlanogramEditorPage() {
               );
             })}
             <g transform={`translate(${SHELF_ROW_LABEL_GUTTER_PX} 0)`}>
-            {/* Vertical bay bars including outer edges */}
-            {bayEdgesPx.map((x, index) => {
-              const topOverhangPx = 20;
-              const bottomOverhangPx = 8;
-              const topY =
-                bayHeightPx - shelfHeightPx - (shelfCount - 1) * shelfSpacingPx - topOverhangPx;
-              const height =
-                shelfHeightPx + (shelfCount - 1) * shelfSpacingPx + topOverhangPx + bottomOverhangPx;
-              return (
-                <rect
-                  key={`bay-bar-${index}-${x}`}
-                  x={x - 4}
-                  y={topY}
-                  width={8}
-                  height={height}
-                  fill="#64748b"
-                  stroke="#334155"
-                  strokeWidth={1.25}
-                  opacity={1}
-                />
-              );
-            })}
-
             {Array.from({ length: shelfCount }, (_, index) => {
               const y = bayHeightPx - shelfHeightPx - index * shelfSpacingPx;
               return (
@@ -1550,6 +1527,30 @@ export function PlanogramEditorPage() {
                 );
               })}
 
+            {/* Vertical bay bars (uprights) drawn on top so articles stay contained between them */}
+            {bayEdgesPx.map((x, index) => {
+              const topOverhangPx = 20;
+              const bottomOverhangPx = 8;
+              const topY =
+                bayHeightPx - shelfHeightPx - (shelfCount - 1) * shelfSpacingPx - topOverhangPx;
+              const height =
+                shelfHeightPx + (shelfCount - 1) * shelfSpacingPx + topOverhangPx + bottomOverhangPx;
+              return (
+                <rect
+                  key={`bay-bar-${index}-${x}`}
+                  x={x - 4}
+                  y={topY}
+                  width={8}
+                  height={height}
+                  fill="#64748b"
+                  stroke="#334155"
+                  strokeWidth={1.25}
+                  opacity={1}
+                  pointerEvents="none"
+                />
+              );
+            })}
+
             <text x={4} y={10} fontSize={9} fill="#475569">
               0 mm
             </text>
@@ -1571,15 +1572,6 @@ export function PlanogramEditorPage() {
                     </text>
                   );
                 })}
-                <text
-                  x={shelfWidthPx / 2}
-                  y={24}
-                  fontSize={9}
-                  textAnchor="middle"
-                  fill="#475569"
-                >
-                  Ukupno {shelfWidthMm} mm
-                </text>
               </>
             ) : (
               <text x={shelfWidthPx / 2} y={10} fontSize={9} fontWeight={600} textAnchor="middle" fill="#1e293b">
