@@ -79,6 +79,13 @@ export function PrintViewPage() {
     return params.get('planogramId');
   }, [location.search]);
 
+  // Zoom level forwarded from the planogram editor so print matches the on-screen scale.
+  const zoomLevel = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const raw = Number(params.get('zoom'));
+    return Number.isFinite(raw) && raw > 0 ? raw : 1;
+  }, [location.search]);
+
   const [planogram, setPlanogram] = useState<PlanogramRow | null>(null);
   const [shelf, setShelf] = useState<ShelfRow | null>(null);
   const [placements, setPlacements] = useState<Placement[]>([]);
@@ -193,14 +200,11 @@ export function PrintViewPage() {
   const shelfDepthMm = shelf?.shelf_depth_mm ?? 400;
   const shelfCount = shelf?.shelf_count ?? 1;
 
-  // Base scale in px per mm, then shrink to fit a typical printable width
-  const basePxPerMm = 1;
-  const baseSvgMarginPx = SVG_MARGIN_PX_BASE * 2;
-  const baseLabelGutterPx = SHELF_ROW_LABEL_GUTTER_PX_BASE;
-  const baseWidthPx = shelfWidthMm * basePxPerMm + baseSvgMarginPx + baseLabelGutterPx;
-  const maxPrintWidthPx = 700;
-  const scale = baseWidthPx > maxPrintWidthPx ? maxPrintWidthPx / baseWidthPx : 1;
-  const pxPerMm = basePxPerMm * scale;
+  // Match the planogram editor exactly: same base scale (0.6 px/mm) and zoom level.
+  // Fixed-size elements (shelf thickness, spacing, margins, fonts) stay at scale 1
+  // just like in the editor, while the horizontal mm→px ratio follows the zoom.
+  const scale = 1;
+  const pxPerMm = 0.6 * zoomLevel;
 
   const shelfWidthPx = shelfWidthMm * pxPerMm;
   const bayEdgesPx = useMemo(

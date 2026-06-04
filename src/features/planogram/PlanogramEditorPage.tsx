@@ -861,7 +861,7 @@ export function PlanogramEditorPage() {
 
   const handlePrint = () => {
     if (!loadedPlanogram) return;
-    navigate(`/print?planogramId=${loadedPlanogram.row.id}`);
+    navigate(`/print?planogramId=${loadedPlanogram.row.id}&zoom=${zoomLevel}`);
   };
 
   const getPointerMm = (clientX: number, clientY: number) => {
