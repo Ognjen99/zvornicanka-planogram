@@ -419,16 +419,21 @@ export function PrintViewPage() {
                         strokeWidth={1 * scale}
                       />
                     )}
-                    {article.imageUrl && (
-                      <image
-                        href={article.imageUrl}
-                        x={xPx}
-                        y={yPx}
-                        width={widthPx}
-                        height={heightPx}
-                        preserveAspectRatio="xMidYMax meet"
-                      />
-                    )}
+                    {article.imageUrl &&
+                      Array.from({ length: placement.facings }, (_, faceIndex) => {
+                        const tileWidth = widthPx / placement.facings;
+                        return (
+                          <image
+                            key={`${placement.id}-face-${faceIndex}`}
+                            href={article.imageUrl}
+                            x={xPx + faceIndex * tileWidth}
+                            y={yPx}
+                            width={tileWidth}
+                            height={heightPx}
+                            preserveAspectRatio="xMidYMax slice"
+                          />
+                        );
+                      })}
                   </g>
                 );
               })}

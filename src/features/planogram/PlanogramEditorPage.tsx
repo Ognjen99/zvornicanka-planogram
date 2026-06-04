@@ -1460,16 +1460,21 @@ export function PlanogramEditorPage() {
                         strokeWidth={overflow || tooTall ? 2 : 1}
                       />
                     )}
-                    {article.imageUrl && (
-                      <image
-                        href={article.imageUrl}
-                        x={xPx}
-                        y={yPx}
-                        width={widthPx}
-                        height={heightPx}
-                        preserveAspectRatio="xMidYMax meet"
-                      />
-                    )}
+                    {article.imageUrl &&
+                      Array.from({ length: placement.facings }, (_, faceIndex) => {
+                        const tileWidth = widthPx / placement.facings;
+                        return (
+                          <image
+                            key={`${placement.id}-face-${faceIndex}`}
+                            href={article.imageUrl}
+                            x={xPx + faceIndex * tileWidth}
+                            y={yPx}
+                            width={tileWidth}
+                            height={heightPx}
+                            preserveAspectRatio="xMidYMax slice"
+                          />
+                        );
+                      })}
                     {showDimensions && (
                       <text x={xPx + 4} y={yPx + 12} fontSize={8} fill="#ffffff">
                         {formatArticleDimensionsCompact(article)}
