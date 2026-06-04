@@ -1490,7 +1490,7 @@ export function PlanogramEditorPage() {
                         y={yPx}
                         width={widthPx}
                         height={heightPx}
-                        preserveAspectRatio="xMidYMax slice"
+                        preserveAspectRatio="xMidYMax meet"
                       />
                     )}
                     {showDimensions && (

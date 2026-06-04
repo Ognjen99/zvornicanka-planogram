@@ -116,8 +116,46 @@ export async function removeImageBackground(
 
   ctx.putImageData(imageData, 0, 0);
 
+  // Trim fully transparent margins so the product fills its own frame.
+  // This lets the product rest on the shelf and fill the slot when displayed.
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  const alphaThreshold = 8;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha > alphaThreshold) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  const hasContent = maxX >= minX && maxY >= minY;
+  const cropX = hasContent ? minX : 0;
+  const cropY = hasContent ? minY : 0;
+  const cropW = hasContent ? maxX - minX + 1 : width;
+  const cropH = hasContent ? maxY - minY + 1 : height;
+
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = cropW;
+  outCanvas.height = cropH;
+  const outCtx = outCanvas.getContext('2d');
+  if (!outCtx) {
+    const fallback = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((result) => resolve(result), 'image/png');
+    });
+    return fallback ?? file;
+  }
+
+  outCtx.putImageData(imageData, -cropX, -cropY);
+
   const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob((result) => resolve(result), 'image/png');
+    outCanvas.toBlob((result) => resolve(result), 'image/png');
   });
 
   return blob ?? file;
