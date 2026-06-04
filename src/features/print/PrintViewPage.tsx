@@ -185,7 +185,7 @@ export function PrintViewPage() {
     () => bayEdgePositionsMm(bayWidthsMm).map((mm) => mm * pxPerMm),
     [bayWidthsMm, pxPerMm],
   );
-  const shelfHeightPx = 12 * scale;
+  const shelfHeightPx = 5 * scale;
   const shelfSpacingPx = 80 * scale;
   const bayHeightPx = 60 * scale + shelfCount * shelfSpacingPx;
   const svgMarginPx = SVG_MARGIN_PX_BASE * scale;
@@ -395,7 +395,7 @@ export function PrintViewPage() {
                       fill="url(#shelfGradientPrint)"
                       stroke="#64748b"
                       strokeWidth={1 * scale}
-                      rx={6 * scale}
+                      rx={2 * scale}
                     />
                     <line
                       x1={0}

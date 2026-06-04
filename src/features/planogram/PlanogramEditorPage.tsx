@@ -687,7 +687,7 @@ export function PlanogramEditorPage() {
   const shelfHeightLimitMm = currentShelf?.shelf_height_mm ?? null;
 
   const shelfWidthPx = shelfWidthMm * pxPerMm;
-  const shelfHeightPx = 12;
+  const shelfHeightPx = 5;
   const shelfSpacingPx = 80;
   const bayHeightPx = 60 + shelfCount * shelfSpacingPx;
   const svgWidthPx = shelfWidthPx + 2 * SVG_MARGIN_PX + SHELF_ROW_LABEL_GUTTER_PX;
@@ -1424,7 +1424,7 @@ export function PlanogramEditorPage() {
                     fill="url(#shelfGradient)"
                     stroke="#64748b"
                     strokeWidth={1}
-                    rx={6}
+                    rx={2}
                   />
                   <line
                     x1={0}
