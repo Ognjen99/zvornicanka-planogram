@@ -707,7 +707,7 @@ export function ArticlesPage() {
                           <img
                             src={article.imageUrl}
                             alt={article.name}
-                            style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8 }}
+                            style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 8, background: '#f5f5f5' }}
                           />
                         )}
                         <div className="stack-v">
