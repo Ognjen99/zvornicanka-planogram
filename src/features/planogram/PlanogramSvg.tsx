@@ -1,7 +1,6 @@
 import { forwardRef } from 'react';
 import type { DragEventHandler, MouseEvent, MouseEventHandler } from 'react';
 import {
-  A4_PRINTABLE_MM,
   BAY_UPRIGHT_BOTTOM_OVERHANG_MM,
   BAY_UPRIGHT_TOP_OVERHANG_MM,
   BAY_UPRIGHT_WIDTH_MM,
@@ -67,17 +66,6 @@ export const PlanogramSvg = forwardRef<SVGSVGElement, PlanogramSvgProps>(functio
   const contentY = SVG_MARGIN_MM;
   const isEdit = mode === 'edit';
   const gradientSuffix = mode === 'print' ? 'Print' : '';
-  const svgSizeProps =
-    mode === 'print'
-      ? {
-          width: `${A4_PRINTABLE_MM.width}mm`,
-          height: `${A4_PRINTABLE_MM.height}mm`,
-        }
-      : {
-          width: '100%',
-          height: '100%',
-        };
-
   return (
     <svg
       ref={ref}
@@ -89,7 +77,8 @@ export const PlanogramSvg = forwardRef<SVGSVGElement, PlanogramSvgProps>(functio
       onMouseLeave={onMouseLeave}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      {...svgSizeProps}
+      width="100%"
+      height="100%"
     >
       <defs>
         <linearGradient id={`shelfGradient${gradientSuffix}`} x1="0" x2="0" y1="0" y2="1">

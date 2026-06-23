@@ -55,7 +55,7 @@ export type ProductRectMm = {
 };
 
 export const DEFAULT_SHELF_ROW_MM = 250;
-export const A4_PRINTABLE_MM = { width: 190, height: 277 };
+export const A4_PRINTABLE_MM = { width: 277, height: 170 };
 export const SVG_MARGIN_MM = 30;
 export const SHELF_ROW_LABEL_GUTTER_MM = 110;
 export const FIXTURE_TOP_PADDING_MM = 30;
