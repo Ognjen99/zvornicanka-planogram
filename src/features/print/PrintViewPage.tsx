@@ -295,7 +295,7 @@ export function PrintViewPage() {
               </div>
             )}
             <div className="metric">
-              Razmera: <strong>uklopljeno na A4 ({A4_PRINTABLE_MM.width} x {A4_PRINTABLE_MM.height} mm)</strong>
+              Razmera: <strong>uklopljeno na A4 landscape ({A4_PRINTABLE_MM.width} x {A4_PRINTABLE_MM.height} mm)</strong>
             </div>
           </div>
 

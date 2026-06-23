@@ -607,7 +607,7 @@ body {
 .print-svg-wrap {
   width: 100%;
   max-width: 277mm;
-  height: 170mm;
+  height: 150mm;
 }
 
 .checkbox-row {
@@ -707,12 +707,21 @@ body {
 
   .print-svg-wrap {
     width: 277mm;
-    height: 170mm;
-    page-break-after: avoid;
+    height: 150mm;
     page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   .print-area .planogram-summary {
-    display: none;
+    display: block;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    font-size: 0.75rem;
+    page-break-before: auto;
+  }
+
+  .print-area .planogram-summary-group {
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 }
