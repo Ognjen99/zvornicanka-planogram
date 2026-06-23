@@ -67,6 +67,33 @@ const MIN_GAP_MM = 1;
 const PALETTE_PAGE_SIZE = 50;
 const PALETTE_MIN_QUERY_LEN = 2;
 
+function getLeftPackedPlacementXMm(
+  widthMm: number,
+  existing: Placement[],
+  articlesById: Map<string, ArticleRow>,
+): number {
+  const ranges = existing
+    .map((p) => {
+      const pArticle = articlesById.get(p.articleId);
+      if (!pArticle) return null;
+      return { start: p.xMm, end: p.xMm + pArticle.width_mm * p.facings };
+    })
+    .filter((r): r is { start: number; end: number } => Boolean(r))
+    .sort((a, b) => a.start - b.start);
+
+  let lastEnd = 0;
+  for (const range of ranges) {
+    const gapStart = lastEnd;
+    const gapEnd = range.start - MIN_GAP_MM;
+    if (gapEnd - gapStart >= widthMm) {
+      return Math.round(gapStart / GRID_MM) * GRID_MM;
+    }
+    lastEnd = Math.max(lastEnd, range.end + MIN_GAP_MM);
+  }
+
+  return Math.round(lastEnd / GRID_MM) * GRID_MM;
+}
+
 export function PlanogramEditorPage() {
   const navigate = useNavigate();
   const { groupOptions: taxonomyGroups, getSubgroupOptions: getTaxonomySubgroups } = useArticleTaxonomy();
@@ -479,35 +506,11 @@ export function PlanogramEditorPage() {
     const targetShelf = typeof shelfIndex === 'number' ? shelfIndex : 0;
     const targetBay = typeof bayIndex === 'number' ? bayIndex : 0;
 
-    const existing = loadedPlanogram.placements
-      .filter((p) => p.shelfIndex === targetShelf && p.bayIndex === targetBay)
-      .map((p) => {
-        const pArticle = articlesById.get(p.articleId);
-        if (!pArticle) return null;
-        return { start: p.xMm, end: p.xMm + pArticle.width_mm * p.facings };
-      })
-      .filter((r): r is { start: number; end: number } => Boolean(r))
-      .sort((a, b) => a.start - b.start);
-
-    let xMm = 0;
     const widthMm = article.width_mm;
-
-    // Find first free slot from the left that can fit this width
-    let lastEnd = 0;
-    for (const range of existing) {
-      const gapStart = lastEnd;
-      const gapEnd = range.start - MIN_GAP_MM;
-      if (gapEnd - gapStart >= widthMm) {
-        xMm = gapStart;
-        break;
-      }
-      lastEnd = Math.max(lastEnd, range.end + MIN_GAP_MM);
-    }
-    if (xMm === 0) {
-      xMm = lastEnd;
-    }
-
-    xMm = Math.round(xMm / GRID_MM) * GRID_MM;
+    const existing = loadedPlanogram.placements.filter(
+      (p) => p.shelfIndex === targetShelf && p.bayIndex === targetBay,
+    );
+    const xMm = getLeftPackedPlacementXMm(widthMm, existing, articlesById);
     const rightEdge = xMm + widthMm;
     const bayW = getBayWidthsMm(currentShelf)[targetBay] ?? currentShelf.bay_width_mm;
     const overflow = rightEdge > bayW;
@@ -962,29 +965,14 @@ export function PlanogramEditorPage() {
     const targetShelf = getShelfIndexAtContentYMm(localY, currentShelf);
 
     const widths = bayLayoutRef.current.widths;
-    const starts = bayLayoutRef.current.starts;
     let targetBay = bayIndexAtAbsoluteMm(absMm, widths);
     targetBay = Math.max(0, Math.min(bayCount - 1, targetBay));
     const bayW = widths[targetBay];
-    const bayStart = starts[targetBay];
-
-    let xMm = absMm - bayStart;
-    xMm = Math.round(xMm / GRID_MM) * GRID_MM;
 
     const existing = loadedPlanogram.placements.filter(
       (p) => p.shelfIndex === targetShelf && p.bayIndex === targetBay,
     );
-
-    let maxEnd = 0;
-    for (const placement of existing) {
-      const pArticle = articlesById.get(placement.articleId);
-      if (!pArticle) continue;
-      const end = placement.xMm + pArticle.width_mm * placement.facings;
-      if (end > maxEnd) maxEnd = end;
-    }
-
-    const minX = Math.max(0, Math.min(xMm, bayW - article.width_mm));
-    const candidateStart = Math.max(minX, maxEnd + MIN_GAP_MM);
+    const candidateStart = getLeftPackedPlacementXMm(article.width_mm, existing, articlesById);
 
     const rightEdge = candidateStart + article.width_mm;
     if (rightEdge > bayW) {
