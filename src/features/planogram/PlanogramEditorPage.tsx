@@ -2,15 +2,27 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  bayEdgePositionsMm,
   bayIndexAtAbsoluteMm,
-  bayStartOffsetsMm,
   getBayWidthsMm,
   totalShelfWidthMm,
 } from '../../lib/bayWidths';
 import { supabase } from '../../lib/supabaseClient';
 import { formatArticleDimensionsCompact } from '../../lib/formatArticleDimensions';
+import {
+  SHELF_ROW_LABEL_GUTTER_MM,
+  SVG_MARGIN_MM,
+  getBayLayoutMm,
+  getFittedPxPerMm,
+  getFixtureBoundsMm,
+  getShelfIndexAtContentYMm,
+  getShelfRowPitchMm,
+  hasMissingShelfHeight,
+  parsePlacements,
+  type Placement,
+} from '../../lib/planogramGeometry';
 import { useArticleTaxonomy } from '../articles/useArticleTaxonomy';
+import { PlanogramSvg } from './PlanogramSvg';
+import { useFitContainerSize } from './useFitContainerSize';
 
 type ArticleRow = {
   id: string;
@@ -42,24 +54,11 @@ type PlanogramRow = {
   placements_jsonb: unknown | null;
 };
 
-type Placement = {
-  id: string;
-  articleId: string;
-  bayIndex: number;
-  shelfIndex: number;
-  xMm: number;
-  facings: number;
-};
-
 type LoadedPlanogram = {
   row: PlanogramRow;
   placements: Placement[];
 };
 
-const BASE_PX_PER_MM = 0.6;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 4;
-const ZOOM_STEP = 0.25;
 const MARGIN_MM = 5;
 const ARTICLE_BUCKET = 'article-images';
 const ARTICLE_SELECT = 'id,name,width_mm,height_mm,depth_mm,image_path,group_name,subgroup_name';
@@ -67,37 +66,13 @@ const GRID_MM = 5;
 const MIN_GAP_MM = 1;
 const PALETTE_PAGE_SIZE = 50;
 const PALETTE_MIN_QUERY_LEN = 2;
-// Extra visual spacing between products in the SVG (pixels), purely cosmetic.
-const VISUAL_GAP_PX = 3;
-const SVG_MARGIN_PX = 20;
-// Horizontal space for “Polica n” labels left of bays.
-const SHELF_ROW_LABEL_GUTTER_PX = 54;
-
-function parsePlacements(value: unknown): Placement[] {
-  if (!value || !Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((item) => {
-      const obj = item as Partial<Placement>;
-      if (!obj.articleId) return null;
-      return {
-        id: obj.id ?? (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`),
-        articleId: String(obj.articleId),
-        bayIndex: typeof obj.bayIndex === 'number' ? obj.bayIndex : 0,
-        shelfIndex: typeof obj.shelfIndex === 'number' ? obj.shelfIndex : 0,
-        xMm: typeof obj.xMm === 'number' ? obj.xMm : 0,
-        facings: typeof obj.facings === 'number' && obj.facings > 0 ? obj.facings : 1,
-      };
-    })
-    .filter((x): x is Placement => Boolean(x));
-}
 
 export function PlanogramEditorPage() {
   const navigate = useNavigate();
   const { groupOptions: taxonomyGroups, getSubgroupOptions: getTaxonomySubgroups } = useArticleTaxonomy();
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const canvasWrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasSize = useFitContainerSize(canvasWrapRef);
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [shelves, setShelves] = useState<ShelfRow[]>([]);
   const [planograms, setPlanograms] = useState<PlanogramRow[]>([]);
@@ -108,7 +83,6 @@ export function PlanogramEditorPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
   const [articleFilter, setArticleFilter] = useState('');
   const [debouncedArticleFilter, setDebouncedArticleFilter] = useState('');
   const [paletteArticles, setPaletteArticles] = useState<ArticleRow[]>([]);
@@ -683,12 +657,21 @@ export function PlanogramEditorPage() {
     setError(null);
   };
 
-  const bayWidthsMm = useMemo(() => {
-    if (!currentShelf) return [1000];
-    return getBayWidthsMm(currentShelf);
-  }, [currentShelf]);
+  const bayLayout = useMemo(
+    () =>
+      currentShelf
+        ? getBayLayoutMm(currentShelf)
+        : {
+            widths: [1000],
+            starts: [0],
+            edges: [0, 1000],
+            totalWidth: 1000,
+          },
+    [currentShelf],
+  );
 
-  const bayStartsMm = useMemo(() => bayStartOffsetsMm(bayWidthsMm), [bayWidthsMm]);
+  const bayWidthsMm = bayLayout.widths;
+  const bayStartsMm = bayLayout.starts;
 
   const bayLayoutRef = useRef<{ widths: number[]; starts: number[] }>({
     widths: [1000],
@@ -697,24 +680,13 @@ export function PlanogramEditorPage() {
   bayLayoutRef.current = { widths: bayWidthsMm, starts: bayStartsMm };
 
   const bayCount = bayWidthsMm.length;
-  const shelfWidthMm = totalShelfWidthMm(bayWidthsMm);
-  const pxPerMm = BASE_PX_PER_MM * zoomLevel;
-
-  const bayEdgesPx = useMemo(
-    () => bayEdgePositionsMm(bayWidthsMm).map((mm) => mm * pxPerMm),
-    [bayWidthsMm, pxPerMm],
-  );
-
+  const shelfWidthMm = bayLayout.totalWidth;
   const shelfDepthMm = currentShelf?.shelf_depth_mm ?? 400;
   const shelfCount = currentShelf?.shelf_count ?? 1;
-  const shelfHeightLimitMm = currentShelf?.shelf_height_mm ?? null;
-
-  const shelfWidthPx = shelfWidthMm * pxPerMm;
-  const shelfHeightPx = 5;
-  const shelfSpacingPx = 80;
-  const bayHeightPx = 60 + shelfCount * shelfSpacingPx;
-  const svgWidthPx = shelfWidthPx + 2 * SVG_MARGIN_PX + SHELF_ROW_LABEL_GUTTER_PX;
-  const svgHeightPx = bayHeightPx + 2 * SVG_MARGIN_PX;
+  const shelfHeightLimitMm = currentShelf ? getShelfRowPitchMm(currentShelf) : null;
+  const shelfHeightMissing = currentShelf ? hasMissingShelfHeight(currentShelf) : false;
+  const fixtureBounds = currentShelf ? getFixtureBoundsMm(currentShelf) : null;
+  const fittedPxPerMm = fixtureBounds ? getFittedPxPerMm(fixtureBounds, canvasSize) : null;
 
   const getSvgPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -730,13 +702,13 @@ export function PlanogramEditorPage() {
   const getShelfContentX = (clientX: number, clientY: number) => {
     const svgPoint = getSvgPoint(clientX, clientY);
     if (!svgPoint) return 0;
-    return svgPoint.x - SVG_MARGIN_PX - SHELF_ROW_LABEL_GUTTER_PX;
+    return svgPoint.x - SVG_MARGIN_MM - SHELF_ROW_LABEL_GUTTER_MM;
   };
 
   const getShelfContentY = (clientX: number, clientY: number) => {
     const svgPoint = getSvgPoint(clientX, clientY);
     if (!svgPoint) return 0;
-    return svgPoint.y - SVG_MARGIN_PX;
+    return svgPoint.y - SVG_MARGIN_MM;
   };
 
   useEffect(() => {
@@ -861,13 +833,12 @@ export function PlanogramEditorPage() {
 
   const handlePrint = () => {
     if (!loadedPlanogram) return;
-    navigate(`/print?planogramId=${loadedPlanogram.row.id}&zoom=${zoomLevel}`);
+    navigate(`/print?planogramId=${loadedPlanogram.row.id}`);
   };
 
   const getPointerMm = (clientX: number, clientY: number) => {
     const localX = getShelfContentX(clientX, clientY);
-    const clampedPx = Math.max(0, Math.min(localX, shelfWidthPx));
-    return clampedPx / pxPerMm;
+    return Math.max(0, Math.min(localX, shelfWidthMm));
   };
 
   const handlePlacementMouseDown = (event: MouseEvent<SVGGElement>, placement: Placement) => {
@@ -985,19 +956,13 @@ export function PlanogramEditorPage() {
       return;
     }
 
-    const localX = getShelfContentX(event.clientX, event.clientY);
     const localY = getShelfContentY(event.clientX, event.clientY);
 
-    const clampedPxX = Math.max(0, Math.min(localX, shelfWidthPx));
-    const shelfIndexFromY = Math.floor(
-      (bayHeightPx - shelfHeightPx - localY) / shelfSpacingPx + 0.5,
-    );
-    const targetShelf =
-      Math.max(0, Math.min(shelfCount - 1, shelfIndexFromY)) || 0;
+    const absMm = getPointerMm(event.clientX, event.clientY);
+    const targetShelf = getShelfIndexAtContentYMm(localY, currentShelf);
 
     const widths = bayLayoutRef.current.widths;
     const starts = bayLayoutRef.current.starts;
-    const absMm = clampedPxX / pxPerMm;
     let targetBay = bayIndexAtAbsoluteMm(absMm, widths);
     targetBay = Math.max(0, Math.min(bayCount - 1, targetBay));
     const bayW = widths[targetBay];
@@ -1146,7 +1111,8 @@ export function PlanogramEditorPage() {
               </div>
             )}
             <div className="metric">
-              Skala na ekranu: <strong>{pxPerMm.toFixed(2)}</strong> px/mm
+              Prikaz: <strong>uklopljeno u panel</strong>
+              {fittedPxPerMm != null && <> · {fittedPxPerMm.toFixed(2)} px/mm</>}
             </div>
           </div>
           <div className="stack-h">
@@ -1188,6 +1154,11 @@ export function PlanogramEditorPage() {
 
         {error && <div className="error-text">{error}</div>}
         {heightWarning && <div className="error-text">{heightWarning}</div>}
+        {shelfHeightMissing && (
+          <div className="error-text">
+            Šablon nema visinu police — unesite je u šablonima polica. Privremeno se koristi podrazumevana visina.
+          </div>
+        )}
       </div>
 
       <div className="planogram-layout">
@@ -1331,288 +1302,28 @@ export function PlanogramEditorPage() {
               Prikazani su svi redovi za izabrani šablon. Prevucite artikl sa palete na željenu policu ili dodajte pomoću dugmeta +.
             </div>
           </div>
-          <div className="planogram-zoom-controls stack-h">
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => setZoomLevel((prev) => Math.max(ZOOM_MIN, prev - ZOOM_STEP))}
-              disabled={zoomLevel <= ZOOM_MIN}
-              aria-label="Umanji prikaz"
-            >
-              −
-            </button>
-            <label className="planogram-zoom-slider">
-              <span className="muted">Zoom</span>
-              <input
-                type="range"
-                min={ZOOM_MIN}
-                max={ZOOM_MAX}
-                step={ZOOM_STEP}
-                value={zoomLevel}
-                onChange={(event) => setZoomLevel(Number(event.target.value))}
-              />
-              <span className="metric">{Math.round(zoomLevel * 100)}%</span>
-            </label>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => setZoomLevel((prev) => Math.min(ZOOM_MAX, prev + ZOOM_STEP))}
-              disabled={zoomLevel >= ZOOM_MAX}
-              aria-label="Uvećaj prikaz"
-            >
-              +
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => setZoomLevel(1)}>
-              Reset
-            </button>
-          </div>
         </div>
 
-        <div className="svg-canvas-wrap">
-        <svg
-          ref={svgRef}
-          className="svg-canvas"
-          width={svgWidthPx}
-          height={svgHeightPx}
-          viewBox={`0 0 ${svgWidthPx} ${svgHeightPx}`}
-          onMouseMove={handleSvgMouseMove}
-          onMouseUp={handleSvgMouseUp}
-          onMouseLeave={handleSvgMouseUp}
-          onDragOver={handleSvgDragOver}
-          onDrop={handleSvgDrop}
-        >
-          <defs>
-              <linearGradient id="shelfGradient" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#e2e8f0" />
-                <stop offset="100%" stopColor="#94a3b8" />
-              </linearGradient>
-            <linearGradient id="productGradient" x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stopColor="#818cf8" />
-              <stop offset="100%" stopColor="#6366f1" />
-            </linearGradient>
-          </defs>
-
-          <g transform={`translate(${SVG_MARGIN_PX} ${SVG_MARGIN_PX})`}>
-            {Array.from({ length: shelfCount }, (_, i) => {
-              const y = bayHeightPx - shelfHeightPx - i * shelfSpacingPx;
-              const cy = y + shelfHeightPx / 2;
-              return (
-                <text
-                  key={`shelf-row-label-${i}`}
-                  x={SHELF_ROW_LABEL_GUTTER_PX - 6}
-                  y={cy}
-                  textAnchor="end"
-                  dominantBaseline="middle"
-                  fontSize={11}
-                  fontWeight={600}
-                  fill="#475569"
-                >
-                  Polica {i + 1}
-                </text>
-              );
-            })}
-            <g transform={`translate(${SHELF_ROW_LABEL_GUTTER_PX} 0)`}>
-            {Array.from({ length: shelfCount }, (_, index) => {
-              const y = bayHeightPx - shelfHeightPx - index * shelfSpacingPx;
-              return (
-                <g key={index}>
-                  <rect
-                    x={0}
-                    y={y}
-                    width={shelfWidthPx}
-                    height={shelfHeightPx}
-                    fill="url(#shelfGradient)"
-                    stroke="#64748b"
-                    strokeWidth={1}
-                    rx={2}
-                  />
-                  <line
-                    x1={0}
-                    y1={y}
-                    x2={shelfWidthPx}
-                    y2={y}
-                    stroke="#cbd5e1"
-                    strokeWidth={1}
-                    strokeDasharray="4 2"
-                  />
-                </g>
-              );
-            })}
-
-            {loadedPlanogram &&
-              loadedPlanogram.placements.map((placement) => {
-                const article = articlesById.get(placement.articleId);
-                if (!article) return null;
-
-                const shelfIndex = placement.shelfIndex ?? 0;
-                const baseY = bayHeightPx - shelfHeightPx - shelfIndex * shelfSpacingPx;
-
-                const widthMm = article.width_mm * placement.facings;
-                const heightMm = article.height_mm;
-                const bayStartMm = bayStartsMm[placement.bayIndex ?? 0] ?? 0;
-                const bayLimitMm = bayWidthsMm[placement.bayIndex ?? 0] ?? 1000;
-                const rawX = (placement.xMm + bayStartMm) * pxPerMm;
-                const rawWidth = widthMm * pxPerMm;
-                // Apply a small pixel-only shrink so products don't look glued together visually.
-                const visualGap = VISUAL_GAP_PX;
-                const widthPx = Math.max(1, rawWidth - visualGap);
-                const xPx = rawX + visualGap / 2;
-                const heightPx = heightMm * pxPerMm;
-                const yPx = baseY - heightPx;
-
-                const rightEdge = placement.xMm + widthMm;
-                const overflow = rightEdge > bayLimitMm;
-                const tooTall = shelfHeightLimitMm != null && heightMm > shelfHeightLimitMm;
-                if (tooTall) return null;
-
-                return (
-                  <g
-                    key={placement.id}
-                    onMouseDown={(event) => handlePlacementMouseDown(event, placement)}
-                    style={{ cursor: 'grab' }}
-                  >
-                    {!article.imageUrl && (
-                      <rect
-                        x={xPx}
-                        y={yPx}
-                        width={widthPx}
-                        height={heightPx}
-                        rx={4}
-                        fill="url(#productGradient)"
-                        stroke={overflow || tooTall ? '#ef4444' : '#4f46e5'}
-                        strokeWidth={overflow || tooTall ? 2 : 1}
-                      />
-                    )}
-                    {article.imageUrl &&
-                      Array.from({ length: placement.facings }, (_, faceIndex) => {
-                        const tileWidth = widthPx / placement.facings;
-                        const aspect = imageAspect[article.id];
-                        // Fill the cell width; derive height from the image's real
-                        // proportions so the whole article shows (extends upward if needed).
-                        const tileHeight = aspect != null ? tileWidth * aspect : heightPx;
-                        return (
-                          <image
-                            key={`${placement.id}-face-${faceIndex}`}
-                            href={article.imageUrl}
-                            x={xPx + faceIndex * tileWidth}
-                            y={baseY - tileHeight}
-                            width={tileWidth}
-                            height={tileHeight}
-                            preserveAspectRatio="none"
-                          />
-                        );
-                      })}
-                    {showDimensions && (
-                      <text x={xPx + 4} y={yPx + 12} fontSize={8} fill="#ffffff">
-                        {formatArticleDimensionsCompact(article)}
-                      </text>
-                    )}
-                    <rect
-                      x={xPx}
-                      y={yPx - 16}
-                      width={18}
-                      height={14}
-                      rx={3}
-                      fill="#10b981"
-                      stroke="#047857"
-                      strokeWidth={1}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleAddArticle(article, shelfIndex, placement.bayIndex);
-                      }}
-                    />
-                    <text
-                      x={xPx + 9}
-                      y={yPx - 6}
-                      fontSize={11}
-                      textAnchor="middle"
-                      fill="#ffffff"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleAddArticle(article, shelfIndex, placement.bayIndex);
-                      }}
-                    >
-                      +
-                    </text>
-                    <rect
-                      x={xPx + widthPx - 16}
-                      y={yPx - 10}
-                      width={14}
-                      height={14}
-                      rx={3}
-                      fill="#ffffff"
-                      stroke="#94a3b8"
-                      strokeWidth={1}
-                      onClick={() => handleRemovePlacement(placement.id)}
-                    />
-                    <text
-                      x={xPx + widthPx - 9}
-                      y={yPx + 0}
-                      fontSize={10}
-                      textAnchor="middle"
-                      fill="#4f46e5"
-                      onClick={() => handleRemovePlacement(placement.id)}
-                    >
-                      ×
-                    </text>
-                  </g>
-                );
-              })}
-
-            {/* Vertical bay bars (uprights) drawn on top so articles stay contained between them */}
-            {bayEdgesPx.map((x, index) => {
-              const topOverhangPx = 20;
-              const bottomOverhangPx = 8;
-              const topY =
-                bayHeightPx - shelfHeightPx - (shelfCount - 1) * shelfSpacingPx - topOverhangPx;
-              const height =
-                shelfHeightPx + (shelfCount - 1) * shelfSpacingPx + topOverhangPx + bottomOverhangPx;
-              return (
-                <rect
-                  key={`bay-bar-${index}-${x}`}
-                  x={x - 4}
-                  y={topY}
-                  width={8}
-                  height={height}
-                  fill="#64748b"
-                  stroke="#334155"
-                  strokeWidth={1.25}
-                  opacity={1}
-                  pointerEvents="none"
-                />
-              );
-            })}
-
-            <text x={4} y={10} fontSize={9} fill="#475569">
-              0 mm
-            </text>
-            {bayCount > 1 ? (
-              <>
-                {bayWidthsMm.map((bayWidth, index) => {
-                  const centerPx = (bayStartsMm[index] + bayWidth / 2) * pxPerMm;
-                  return (
-                    <text
-                      key={`bay-width-label-${index}`}
-                      x={centerPx}
-                      y={10}
-                      fontSize={9}
-                      fontWeight={600}
-                      textAnchor="middle"
-                      fill="#1e293b"
-                    >
-                      Raf {index + 1}: {bayWidth} mm
-                    </text>
-                  );
-                })}
-              </>
-            ) : (
-              <text x={shelfWidthPx / 2} y={10} fontSize={9} fontWeight={600} textAnchor="middle" fill="#1e293b">
-                Širina {shelfWidthMm} mm
-              </text>
-            )}
-            </g>
-          </g>
-        </svg>
+        <div className="svg-canvas-wrap" ref={canvasWrapRef}>
+          {currentShelf && (
+            <PlanogramSvg
+              ref={svgRef}
+              shelf={currentShelf}
+              placements={loadedPlanogram?.placements ?? []}
+              articlesById={articlesById}
+              imageAspect={imageAspect}
+              mode="edit"
+              showDimensions={showDimensions}
+              onMouseMove={handleSvgMouseMove}
+              onMouseUp={handleSvgMouseUp}
+              onMouseLeave={handleSvgMouseUp}
+              onDragOver={handleSvgDragOver}
+              onDrop={handleSvgDrop}
+              onPlacementMouseDown={handlePlacementMouseDown}
+              onAddFacing={(article, shelfIndex, bayIndex) => handleAddArticle(article as ArticleRow, shelfIndex, bayIndex)}
+              onRemovePlacement={handleRemovePlacement}
+            />
+          )}
         </div>
 
         {bayShelfSummaries.length > 0 && (

@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { getBayWidthsMm, totalShelfWidthMm } from '../../lib/bayWidths';
 import {
-  bayEdgePositionsMm,
-  bayStartOffsetsMm,
-  getBayWidthsMm,
-  totalShelfWidthMm,
-} from '../../lib/bayWidths';
+  A4_PRINTABLE_MM,
+  getShelfRowPitchMm,
+  hasMissingShelfHeight,
+  parsePlacements,
+  type Placement,
+} from '../../lib/planogramGeometry';
 import { supabase } from '../../lib/supabaseClient';
+import { PlanogramSvg } from '../planogram/PlanogramSvg';
 
 const ARTICLE_IMAGE_BUCKET = 'article-images';
 
@@ -28,6 +31,7 @@ type ShelfRow = {
   shelf_count: number;
   bay_count?: number | null;
   bay_widths_mm?: unknown | null;
+  shelf_height_mm?: number | null;
 };
 
 type PlanogramRow = {
@@ -37,53 +41,11 @@ type PlanogramRow = {
   placements_jsonb: unknown | null;
 };
 
-type Placement = {
-  id: string;
-  articleId: string;
-  bayIndex: number;
-  shelfIndex: number;
-  xMm: number;
-  facings: number;
-};
-
-// Extra visual spacing between products in the SVG (pixels at base scale), purely cosmetic.
-const VISUAL_GAP_PX = 3;
-const SVG_MARGIN_PX_BASE = 20;
-const SHELF_ROW_LABEL_GUTTER_PX_BASE = 54;
-
-function parsePlacements(value: unknown): Placement[] {
-  if (!value || !Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((item) => {
-      const obj = item as Partial<Placement>;
-      if (!obj.articleId) return null;
-      return {
-        id: obj.id ?? (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`),
-        articleId: String(obj.articleId),
-        bayIndex: typeof obj.bayIndex === 'number' ? obj.bayIndex : 0,
-        shelfIndex: typeof obj.shelfIndex === 'number' ? obj.shelfIndex : 0,
-        xMm: typeof obj.xMm === 'number' ? obj.xMm : 0,
-        facings: typeof obj.facings === 'number' && obj.facings > 0 ? obj.facings : 1,
-      };
-    })
-    .filter((x): x is Placement => Boolean(x));
-}
-
 export function PrintViewPage() {
   const location = useLocation();
   const planogramId = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get('planogramId');
-  }, [location.search]);
-
-  // Zoom level forwarded from the planogram editor so print matches the on-screen scale.
-  const zoomLevel = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    const raw = Number(params.get('zoom'));
-    return Number.isFinite(raw) && raw > 0 ? raw : 1;
   }, [location.search]);
 
   const [planogram, setPlanogram] = useState<PlanogramRow | null>(null);
@@ -123,7 +85,7 @@ export function PrintViewPage() {
       const [{ data: shelfRow, error: shelfError }, { data: articleRows, error: articlesError }] = await Promise.all([
         supabase
           .from('shelves')
-          .select('id,name,bay_width_mm,shelf_depth_mm,shelf_count,bay_count,bay_widths_mm')
+          .select('id,name,bay_width_mm,shelf_depth_mm,shelf_count,bay_count,bay_widths_mm,shelf_height_mm')
           .eq('id', planRow.shelf_id)
           .single(),
         supabase.from('articles').select('id,name,width_mm,height_mm,depth_mm,image_path'),
@@ -194,30 +156,11 @@ export function PrintViewPage() {
     return getBayWidthsMm(shelf);
   }, [shelf]);
 
-  const bayStartsMm = useMemo(() => bayStartOffsetsMm(bayWidthsMm), [bayWidthsMm]);
-
   const shelfWidthMm = totalShelfWidthMm(bayWidthsMm);
   const shelfDepthMm = shelf?.shelf_depth_mm ?? 400;
   const shelfCount = shelf?.shelf_count ?? 1;
-
-  // Match the planogram editor exactly: same base scale (0.6 px/mm) and zoom level.
-  // Fixed-size elements (shelf thickness, spacing, margins, fonts) stay at scale 1
-  // just like in the editor, while the horizontal mm→px ratio follows the zoom.
-  const scale = 1;
-  const pxPerMm = 0.6 * zoomLevel;
-
-  const shelfWidthPx = shelfWidthMm * pxPerMm;
-  const bayEdgesPx = useMemo(
-    () => bayEdgePositionsMm(bayWidthsMm).map((mm) => mm * pxPerMm),
-    [bayWidthsMm, pxPerMm],
-  );
-  const shelfHeightPx = 5 * scale;
-  const shelfSpacingPx = 80 * scale;
-  const bayHeightPx = 60 * scale + shelfCount * shelfSpacingPx;
-  const svgMarginPx = SVG_MARGIN_PX_BASE * scale;
-  const shelfLabelGutterPx = SHELF_ROW_LABEL_GUTTER_PX_BASE * scale;
-  const svgOuterWidthPx = shelfWidthPx + svgMarginPx * 2 + shelfLabelGutterPx;
-  const svgOuterHeightPx = bayHeightPx + svgMarginPx * 2;
+  const shelfHeightLimitMm = shelf ? getShelfRowPitchMm(shelf) : null;
+  const shelfHeightMissing = shelf ? hasMissingShelfHeight(shelf) : false;
 
   const bayShelfSummaries = useMemo(() => {
     if (!planogram || !shelf) return [];
@@ -329,7 +272,7 @@ export function PrintViewPage() {
         </p>
       )}
 
-      {planogramId && loading && <p className="muted">Učitavanje planograma za štampu…</p>}
+      {planogramId && loading && <p className="muted">Učitavanje planograma za štampu...</p>}
 
       {error && <p className="error-text">{error}</p>}
 
@@ -346,196 +289,67 @@ export function PrintViewPage() {
               Širina <strong>{shelfWidthMm}</strong> mm · Dubina <strong>{shelfDepthMm}</strong> mm · Police{' '}
               <strong>{shelfCount}</strong>
             </div>
+            {shelfHeightLimitMm != null && (
+              <div className="metric">
+                Visina police: <strong>{shelfHeightLimitMm}</strong> mm
+              </div>
+            )}
+            <div className="metric">
+              Razmera: <strong>uklopljeno na A4 ({A4_PRINTABLE_MM.width} x {A4_PRINTABLE_MM.height} mm)</strong>
+            </div>
           </div>
 
-          <div className="print-area">
-          <svg
-            className="svg-canvas"
-            width={svgOuterWidthPx}
-            height={svgOuterHeightPx}
-            viewBox={`0 0 ${svgOuterWidthPx} ${svgOuterHeightPx}`}
-          >
-            <defs>
-              <linearGradient id="shelfGradientPrint" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#e2e8f0" />
-                <stop offset="100%" stopColor="#94a3b8" />
-              </linearGradient>
-              <linearGradient id="productGradientPrint" x1="0" x2="1" y1="0" y2="1">
-                <stop offset="0%" stopColor="#818cf8" />
-                <stop offset="100%" stopColor="#6366f1" />
-              </linearGradient>
-            </defs>
-
-            <g transform={`translate(${svgMarginPx} ${svgMarginPx})`}>
-              {Array.from({ length: shelfCount }, (_, i) => {
-                const y = bayHeightPx - shelfHeightPx - i * shelfSpacingPx;
-                const cy = y + shelfHeightPx / 2;
-                return (
-                  <text
-                    key={`shelf-row-label-print-${i}`}
-                    x={shelfLabelGutterPx - 6 * scale}
-                    y={cy}
-                    textAnchor="end"
-                    dominantBaseline="middle"
-                    fontSize={11 * scale}
-                    fontWeight={600}
-                    fill="#475569"
-                  >
-                    Polica {i + 1}
-                  </text>
-                );
-              })}
-              <g transform={`translate(${shelfLabelGutterPx} 0)`}>
-              {Array.from({ length: shelfCount }, (_, index) => {
-                const y = bayHeightPx - shelfHeightPx - index * shelfSpacingPx;
-                return (
-                  <g key={index}>
-                    <rect
-                      x={0}
-                      y={y}
-                      width={shelfWidthPx}
-                      height={shelfHeightPx}
-                      fill="url(#shelfGradientPrint)"
-                      stroke="#64748b"
-                      strokeWidth={1 * scale}
-                      rx={2 * scale}
-                    />
-                    <line
-                      x1={0}
-                      y1={y}
-                      x2={shelfWidthPx}
-                      y2={y}
-                      stroke="#cbd5e1"
-                      strokeWidth={1 * scale}
-                      strokeDasharray={`${4 * scale} ${2 * scale}`}
-                    />
-                  </g>
-                );
-              })}
-
-              {placements.map((placement) => {
-                const article = articlesById.get(placement.articleId);
-                if (!article) return null;
-
-                const shelfIndex = placement.shelfIndex ?? 0;
-                const baseY = bayHeightPx - shelfHeightPx - shelfIndex * shelfSpacingPx;
-
-                const widthMm = article.width_mm * placement.facings;
-                const heightMm = article.height_mm;
-                const bayStartMm = bayStartsMm[placement.bayIndex ?? 0] ?? 0;
-                const rawX = (placement.xMm + bayStartMm) * pxPerMm;
-                const rawWidth = widthMm * pxPerMm;
-                const visualGap = VISUAL_GAP_PX * scale;
-                const widthPx = Math.max(1, rawWidth - visualGap);
-                const xPx = rawX + visualGap / 2;
-                const heightPx = heightMm * pxPerMm;
-                const yPx = baseY - heightPx;
-
-                return (
-                  <g key={placement.id}>
-                    {!article.imageUrl && (
-                      <rect
-                        x={xPx}
-                        y={yPx}
-                        width={widthPx}
-                        height={heightPx}
-                        rx={4 * scale}
-                        fill="url(#productGradientPrint)"
-                        stroke="#4f46e5"
-                        strokeWidth={1 * scale}
-                      />
-                    )}
-                    {article.imageUrl &&
-                      Array.from({ length: placement.facings }, (_, faceIndex) => {
-                        const tileWidth = widthPx / placement.facings;
-                        const aspect = imageAspect[article.id];
-                        const tileHeight = aspect != null ? tileWidth * aspect : heightPx;
-                        return (
-                          <image
-                            key={`${placement.id}-face-${faceIndex}`}
-                            href={article.imageUrl}
-                            x={xPx + faceIndex * tileWidth}
-                            y={baseY - tileHeight}
-                            width={tileWidth}
-                            height={tileHeight}
-                            preserveAspectRatio="none"
-                          />
-                        );
-                      })}
-                  </g>
-                );
-              })}
-
-              {/* Vertical bay bars (uprights) drawn on top so articles stay contained between them */}
-              {bayEdgesPx.map((x, index) => {
-                const topOverhangPx = 20 * scale;
-                const bottomOverhangPx = 8 * scale;
-                const topY =
-                  bayHeightPx - shelfHeightPx - (shelfCount - 1) * shelfSpacingPx - topOverhangPx;
-                const height =
-                  shelfHeightPx + (shelfCount - 1) * shelfSpacingPx + topOverhangPx + bottomOverhangPx;
-                return (
-                  <rect
-                    key={`bay-bar-print-${index}-${x}`}
-                    x={x - 4 * scale}
-                    y={topY}
-                    width={8 * scale}
-                    height={height}
-                    fill="#64748b"
-                    stroke="#334155"
-                    strokeWidth={1.25 * scale}
-                    opacity={1}
-                    pointerEvents="none"
-                  />
-                );
-              })}
-
-              <text x={4} y={12 * scale} fontSize={9 * scale} fill="#475569">
-                0 mm
-              </text>
-              <text x={shelfWidthPx - 40 * scale} y={12 * scale} fontSize={9 * scale} fill="#475569">
-                {shelfWidthMm} mm
-              </text>
-              </g>
-            </g>
-          </svg>
-
-          {bayShelfSummaries.length > 0 && (
-            <div className="planogram-summary">
-              {bayShelfSummaries.map((group) => (
-                <div key={`${group.bayIndex}-${group.shelfIndex}`} className="planogram-summary-group">
-                  <div className="planogram-summary-title">
-                    Raf {group.bayIndex + 1}
-                    {bayWidthsMm[group.bayIndex] != null && (
-                      <>
-                        {' '}
-                        (<strong>{bayWidthsMm[group.bayIndex]}</strong> mm)
-                      </>
-                    )}
-                    , polica {group.shelfIndex + 1}
-                  </div>
-                  <ul className="planogram-summary-list">
-                    {group.items.map((item) => (
-                      <li key={item.articleId}>
-                        <strong>{item.name}</strong> –{' '}
-                        {item.facingsTotal === 1 ? '1 lice' : `${item.facingsTotal} lica`}
-                        {item.depthMm
-                          ? item.totalUnits && item.rowsDeep && item.rowsDeep > 0
-                            ? `, otprilike ${item.totalUnits} kom. (${item.rowsDeep} red${item.rowsDeep !== 1 ? 'a' : ''} dubinski prema dubini police)`
-                            : `, dubina ${item.depthMm} mm (dubina police ${shelfDepthMm} mm)`
-                          : ` (dubina nije uneta — samo položaji u širini)`}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+          {shelfHeightMissing && (
+            <div className="error-text">
+              Šablon nema visinu police — unesite je u šablonima polica. Privremeno se koristi podrazumevana visina.
             </div>
           )}
+
+          <div className="print-area">
+            <div className="print-svg-wrap">
+              <PlanogramSvg
+                shelf={shelf}
+                placements={placements}
+                articlesById={articlesById}
+                imageAspect={imageAspect}
+                mode="print"
+              />
+            </div>
+
+            {bayShelfSummaries.length > 0 && (
+              <div className="planogram-summary">
+                {bayShelfSummaries.map((group) => (
+                  <div key={`${group.bayIndex}-${group.shelfIndex}`} className="planogram-summary-group">
+                    <div className="planogram-summary-title">
+                      Raf {group.bayIndex + 1}
+                      {bayWidthsMm[group.bayIndex] != null && (
+                        <>
+                          {' '}
+                          (<strong>{bayWidthsMm[group.bayIndex]}</strong> mm)
+                        </>
+                      )}
+                      , polica {group.shelfIndex + 1}
+                    </div>
+                    <ul className="planogram-summary-list">
+                      {group.items.map((item) => (
+                        <li key={item.articleId}>
+                          <strong>{item.name}</strong> -{' '}
+                          {item.facingsTotal === 1 ? '1 lice' : `${item.facingsTotal} lica`}
+                          {item.depthMm
+                            ? item.totalUnits && item.rowsDeep && item.rowsDeep > 0
+                              ? `, otprilike ${item.totalUnits} kom. (${item.rowsDeep} red${item.rowsDeep !== 1 ? 'a' : ''} dubinski prema dubini police)`
+                              : `, dubina ${item.depthMm} mm (dubina police ${shelfDepthMm} mm)`
+                            : ` (dubina nije uneta - samo položaji u širini)`}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
     </div>
   );
 }
-
-

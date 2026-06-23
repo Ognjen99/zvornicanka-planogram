@@ -117,7 +117,7 @@ export function ShelvesPage() {
       const depth = Number(shelfDepthMm);
       const count = Number(shelfCount);
       const bays = Number(bayCount || '1');
-      const height = shelfHeightMm ? Number(shelfHeightMm) : null;
+      const height = Number(shelfHeightMm);
 
       if (!name.trim()) {
         setError('Naziv je obavezan.');
@@ -171,8 +171,8 @@ export function ShelvesPage() {
         setError('Broj polica mora biti pozitivan ceo broj.');
         return;
       }
-      if (height != null && (!Number.isFinite(height) || height <= 0)) {
-        setError('Visina police mora biti pozitivan broj (mm) kada je uneta.');
+      if (!Number.isFinite(height) || height <= 0) {
+        setError('Visina police mora biti pozitivan broj (mm).');
         return;
       }
 
@@ -382,7 +382,8 @@ export function ShelvesPage() {
                 step={1}
                 value={shelfHeightMm}
                 onChange={(event) => setShelfHeightMm(event.target.value)}
-                placeholder="npr. 350 (opciono)"
+                placeholder="npr. 350"
+                required
               />
             </label>
           </div>
@@ -435,12 +436,9 @@ export function ShelvesPage() {
                         <strong>{shelf.bay_count == null ? 1 : shelf.bay_count}</strong>
                       </>
                     )}
-                    {shelf.shelf_height_mm != null && (
-                      <>
-                        {' '}
-                        · Visina <strong>{shelf.shelf_height_mm}</strong> mm
-                      </>
-                    )}
+                    {' '}
+                    · Visina{' '}
+                    <strong>{shelf.shelf_height_mm != null ? `${shelf.shelf_height_mm} mm` : 'nije uneta'}</strong>
                   </div>
                 </div>
                 <div className="stack-h">
